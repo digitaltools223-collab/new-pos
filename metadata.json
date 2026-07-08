@@ -1,0 +1,6 @@
+{
+  "name": "MDR POS System (Garments Edition)",
+  "description": "Production-grade garments store POS system with barcode scanning, billing, smart exchanges, returns, inventory, and reporting, powered by MDR Software Series.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

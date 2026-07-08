@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Temporarily allow all for migration and development
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    // Since we are using server-side routes, we don't need client-side access.
+    // However, if the user decides to use client SDKs later, they can update these.
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "collections": {
+    "users": {
+      "id": "string",
+      "name": "string",
+      "email": "string",
+      "passwordHash": "string",
+      "role": "string",
+      "createdAt": "string"
+    },
+    "customers": {
+      "id": "string",
+      "name": "string",
+      "phone": "string",
+      "address": "string",
+      "createdAt": "string"
+    },
+    "products": {
+      "id": "string",
+      "barcode": "string",
+      "name": "string",
+      "category": "string",
+      "brand": "string",
+      "size": "string",
+      "color": "string",
+      "purchasePrice": "number",
+      "salePrice": "number",
+      "stock": "number",
+      "image": "string",
+      "createdAt": "string"
+    },
+    "sales": {
+      "id": "string",
+      "billNumber": "string",
+      "customerId": "string",
+      "subtotal": "number",
+      "discount": "number",
+      "discountType": "string",
+      "discountValue": "number",
+      "total": "number",
+      "paymentMethod": "string",
+      "amountReceived": "number",
+      "changeAmount": "number",
+      "createdAt": "string"
+    },
+    "saleItems": {
+      "id": "string",
+      "saleId": "string",
+      "productId": "string",
+      "price": "number",
+      "qty": "number",
+      "isReturned": "boolean",
+      "isExchanged": "boolean"
+    },
+    "exchanges": {
+      "id": "string",
+      "oldSaleItemId": "string",
+      "newProductId": "string",
+      "differenceAmount": "number",
+      "type": "string",
+      "createdAt": "string"
+    },
+    "returns": {
+      "id": "string",
+      "saleItemId": "string",
+      "refundAmount": "number",
+      "reason": "string",
+      "refundMethod": "string",
+      "createdAt": "string"
+    },
+    "stockMovements": {
+      "id": "string",
+      "productId": "string",
+      "movementType": "string",
+      "quantity": "number",
+      "previousStock": "number",
+      "newStock": "number",
+      "referenceId": "string",
+      "createdAt": "string"
+    },
+    "settings": {
+      "shopName": "string",
+      "address": "string",
+      "phone": "string",
+      "logo": "string",
+      "saleFooter": "string",
+      "returnFooter": "string",
+      "exchangeFooter": "string",
+      "exchangePolicy": "string",
+      "showPolicyToggle": "boolean",
+      "exchangeDays": "number",
+      "returnDays": "number",
+      "ntn": "string",
+      "receiptHeader": "string",
+      "receiptFooter": "string",
+      "ownerName": "string"
+    }
+  }
+}
