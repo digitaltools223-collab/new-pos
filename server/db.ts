@@ -1,37 +1,39 @@
-import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { initializeApp as initializeClientApp } from "firebase/app";
+import { getFirestore as getClientFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, limit, writeBatch, serverTimestamp, increment } from "firebase/firestore";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
 
-// Firebase configuration from firebase-applet-config.json
-import firebaseAppletConfig from "../firebase-applet-config.json" assert { type: "json" };
-
-const isPlaceholder = (val: string | undefined) => !val || val === "Allahpakg6596";
-
-// Initialize Firebase Admin
-if (!getApps().length) {
-  const projectId = !isPlaceholder(process.env.FIREBASE_PROJECT_ID) ? process.env.FIREBASE_PROJECT_ID! : firebaseAppletConfig.projectId;
-  const databaseId = !isPlaceholder(process.env.FIRESTORE_DATABASE_ID) ? process.env.FIRESTORE_DATABASE_ID! : firebaseAppletConfig.firestoreDatabaseId;
-
-  const serviceAccount = {
-    projectId: projectId,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  };
-
-  if (serviceAccount.clientEmail && serviceAccount.privateKey) {
-    initializeApp({
-      credential: cert(serviceAccount as any),
-    }, "default"); // Note: second arg is name, not databaseId
-  } else {
-    initializeApp({
-      projectId: projectId,
-    });
+// Robust loading of Firebase configuration
+let firebaseAppletConfig: any = {};
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseAppletConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
   }
+} catch (err) {
+  console.error("Failed to load firebase-applet-config.json:", err);
 }
 
-// Initialize Firestore with the correct database ID
-const targetDbId = !isPlaceholder(process.env.FIRESTORE_DATABASE_ID) ? process.env.FIRESTORE_DATABASE_ID! : firebaseAppletConfig.firestoreDatabaseId;
-const db_firestore = targetDbId && targetDbId !== "(default)" ? getFirestore(targetDbId) : getFirestore();
+const isPlaceholder = (val: string | undefined) => !val || val === "Allahpakg6596" || val === "YOUR_PROJECT_ID" || val === "PROJECT_ID";
+
+// Initialize Firebase Client SDK (preferred in this environment for better connectivity)
+const clientConfig = {
+  apiKey: firebaseAppletConfig.apiKey || process.env.FIREBASE_API_KEY,
+  authDomain: firebaseAppletConfig.authDomain || process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: firebaseAppletConfig.projectId || process.env.FIREBASE_PROJECT_ID || "pos-series-software",
+  storageBucket: firebaseAppletConfig.storageBucket || process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: firebaseAppletConfig.messagingSenderId || process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: firebaseAppletConfig.appId || process.env.FIREBASE_APP_ID
+};
+
+const databaseId = firebaseAppletConfig.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID || "(default)";
+
+console.log(`Initializing Firebase Client SDK with Project: ${clientConfig.projectId}, Database: ${databaseId}`);
+
+const clientApp = initializeClientApp(clientConfig);
+// Note: Client SDK getFirestore takes (app, databaseId)
+const db_firestore = getClientFirestore(clientApp, databaseId === "(default)" ? undefined : databaseId);
 
 // Helper for generating IDs
 function generateId(): string {
@@ -146,7 +148,7 @@ class Database {
   async init() {
     try {
       // Just check connection
-      await db_firestore.collection("app").doc("health").set({ lastCheck: new Date().toISOString() }, { merge: true });
+      await setDoc(doc(db_firestore, "app", "health"), { lastCheck: new Date().toISOString() }, { merge: true });
     } catch (err) {
       console.error("Firestore initialization check failed:", err);
     }
@@ -154,19 +156,20 @@ class Database {
 
   // --- Users Operations ---
   async getUsers(): Promise<User[]> {
-    const snap = await db_firestore.collection("users").get();
-    return snap.docs.map(doc => doc.data() as User);
+    const snap = await getDocs(collection(db_firestore, "users"));
+    return snap.docs.map(d => d.data() as User);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const snap = await db_firestore.collection("users").where("email", "==", email.toLowerCase()).limit(1).get();
+    const q = query(collection(db_firestore, "users"), where("email", "==", email.toLowerCase()), limit(1));
+    const snap = await getDocs(q);
     if (snap.empty) return undefined;
     return snap.docs[0].data() as User;
   }
 
   async getUserById(id: string): Promise<User | undefined> {
-    const docSnap = await db_firestore.collection("users").doc(id).get();
-    if (!docSnap.exists) return undefined;
+    const docSnap = await getDoc(doc(db_firestore, "users", id));
+    if (!docSnap.exists()) return undefined;
     return docSnap.data() as User;
   }
 
@@ -177,35 +180,36 @@ class Database {
       id,
       createdAt: new Date().toISOString(),
     };
-    await db_firestore.collection("users").doc(id).set(newUser);
+    await setDoc(doc(db_firestore, "users", id), newUser);
     return newUser;
   }
 
   async updateUser(id: string, updates: Partial<Omit<User, "id" | "role" | "createdAt">>): Promise<User> {
-    await db_firestore.collection("users").doc(id).update(updates);
+    await updateDoc(doc(db_firestore, "users", id), updates);
     const updated = await this.getUserById(id);
     if (!updated) throw new Error("User not found");
     return updated;
   }
 
   async deleteUser(id: string): Promise<void> {
-    await db_firestore.collection("users").doc(id).delete();
+    await deleteDoc(doc(db_firestore, "users", id));
   }
 
   // --- Products Operations ---
   async getProducts(): Promise<Product[]> {
-    const snap = await db_firestore.collection("products").get();
-    return snap.docs.map(doc => doc.data() as Product);
+    const snap = await getDocs(collection(db_firestore, "products"));
+    return snap.docs.map(d => d.data() as Product);
   }
 
   async getProductById(id: string): Promise<Product | undefined> {
-    const docSnap = await db_firestore.collection("products").doc(id).get();
-    if (!docSnap.exists) return undefined;
+    const docSnap = await getDoc(doc(db_firestore, "products", id));
+    if (!docSnap.exists()) return undefined;
     return docSnap.data() as Product;
   }
 
   async getProductByBarcode(barcode: string): Promise<Product | undefined> {
-    const snap = await db_firestore.collection("products").where("barcode", "==", barcode).limit(1).get();
+    const q = query(collection(db_firestore, "products"), where("barcode", "==", barcode), limit(1));
+    const snap = await getDocs(q);
     if (snap.empty) return undefined;
     return snap.docs[0].data() as Product;
   }
@@ -241,7 +245,7 @@ class Database {
       createdAt: new Date().toISOString(),
     };
 
-    await db_firestore.collection("products").doc(id).set(newProd);
+    await setDoc(doc(db_firestore, "products", id), newProd);
     await this.addStockMovement(id, "PURCHASE", newProd.stock, 0, newProd.stock, "MANUAL_ADD");
     return newProd;
   }
@@ -260,24 +264,25 @@ class Database {
       await this.addStockMovement(id, "MANUAL_ADJUSTMENT", diff, current.stock, updates.stock, "MANUAL_ADJUST");
     }
 
-    await db_firestore.collection("products").doc(id).update(updates);
+    await updateDoc(doc(db_firestore, "products", id), updates);
     const updated = await this.getProductById(id);
     if (!updated) throw new Error("Product not found");
     return updated;
   }
 
   async deleteProduct(id: string): Promise<void> {
-    await db_firestore.collection("products").doc(id).delete();
+    await deleteDoc(doc(db_firestore, "products", id));
   }
 
   // --- Customers Operations ---
   async getCustomers(): Promise<Customer[]> {
-    const snap = await db_firestore.collection("customers").get();
-    return snap.docs.map(doc => doc.data() as Customer);
+    const snap = await getDocs(collection(db_firestore, "customers"));
+    return snap.docs.map(d => d.data() as Customer);
   }
 
   async getCustomerByPhone(phone: string): Promise<Customer | undefined> {
-    const snap = await db_firestore.collection("customers").where("phone", "==", phone.trim()).limit(1).get();
+    const q = query(collection(db_firestore, "customers"), where("phone", "==", phone.trim()), limit(1));
+    const snap = await getDocs(q);
     if (snap.empty) return undefined;
     return snap.docs[0].data() as Customer;
   }
@@ -286,7 +291,7 @@ class Database {
     const existing = await this.getCustomerByPhone(phone);
     if (existing) {
       if (name && name !== "Walk-In Customer" && existing.name === "Walk-In Customer") {
-        await db_firestore.collection("customers").doc(existing.id).update({ name, address: address || existing.address });
+        await updateDoc(doc(db_firestore, "customers", existing.id), { name, address: address || existing.address });
         existing.name = name;
         if (address) existing.address = address;
       }
@@ -301,27 +306,28 @@ class Database {
       address: address || "N/A",
       createdAt: new Date().toISOString(),
     };
-    await db_firestore.collection("customers").doc(id).set(newCust);
+    await setDoc(doc(db_firestore, "customers", id), newCust);
     return newCust;
   }
 
   // --- Sales Operations ---
   async getSales(): Promise<Sale[]> {
-    const snap = await db_firestore.collection("sales").get();
-    return snap.docs.map(doc => doc.data() as Sale);
+    const snap = await getDocs(collection(db_firestore, "sales"));
+    return snap.docs.map(d => d.data() as Sale);
   }
 
   async getSaleItems(saleId?: string): Promise<SaleItem[]> {
     if (saleId) {
-      const snap = await db_firestore.collection("saleItems").where("saleId", "==", saleId).get();
-      return snap.docs.map(doc => doc.data() as SaleItem);
+      const q = query(collection(db_firestore, "saleItems"), where("saleId", "==", saleId));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as SaleItem);
     }
-    const snap = await db_firestore.collection("saleItems").get();
-    return snap.docs.map(doc => doc.data() as SaleItem);
+    const snap = await getDocs(collection(db_firestore, "saleItems"));
+    return snap.docs.map(d => d.data() as SaleItem);
   }
 
   async generateBillNumber(): Promise<string> {
-    const snap = await db_firestore.collection("sales").get();
+    const snap = await getDocs(collection(db_firestore, "sales"));
     const count = snap.size + 1;
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     return `SLG-${dateStr}-${count.toString().padStart(4, "0")}`;
@@ -331,21 +337,21 @@ class Database {
     const customer = await this.getOrCreateCustomer(saleData.customerName, saleData.customerPhone, saleData.customerAddress);
     const saleId = generateId();
     const billNum = await this.generateBillNumber();
-    const batch = db_firestore.batch();
+    const batch = writeBatch(db_firestore);
 
     for (const item of saleData.items) {
-      const prodSnap = await db_firestore.collection("products").doc(item.productId).get();
-      if (!prodSnap.exists) continue;
+      const prodSnap = await getDoc(doc(db_firestore, "products", item.productId));
+      if (!prodSnap.exists()) continue;
       const prod = prodSnap.data() as Product;
       const prevStock = prod.stock;
       const newStock = prod.stock - item.qty;
-      batch.update(db_firestore.collection("products").doc(prod.id), { stock: newStock });
+      batch.update(doc(db_firestore, "products", prod.id), { stock: newStock });
       const itemId = generateId();
-      batch.set(db_firestore.collection("saleItems").doc(itemId), {
+      batch.set(doc(db_firestore, "saleItems", itemId), {
         id: itemId, saleId, productId: item.productId, qty: item.qty, price: item.price, isReturned: false, isExchanged: false,
       });
       const mId = generateId();
-      batch.set(db_firestore.collection("stockMovements").doc(mId), {
+      batch.set(doc(db_firestore, "stockMovements", mId), {
         id: mId, productId: prod.id, movementType: "SALE", quantity: -item.qty, previousStock: prevStock, newStock: newStock, referenceId: saleId, createdAt: new Date().toISOString(),
       });
     }
@@ -356,15 +362,15 @@ class Database {
       total: saleData.total, paymentMethod: saleData.paymentMethod, amountReceived: saleData.amountReceived, 
       changeAmount: saleData.changeAmount, createdAt: new Date().toISOString(),
     };
-    batch.set(db_firestore.collection("sales").doc(saleId), sale);
+    batch.set(doc(db_firestore, "sales", saleId), sale);
     await batch.commit();
     return sale;
   }
 
   // --- Exchange Operations ---
   async getExchanges(): Promise<Exchange[]> {
-    const snap = await db_firestore.collection("exchanges").get();
-    return snap.docs.map(doc => doc.data() as Exchange);
+    const snap = await getDocs(collection(db_firestore, "exchanges"));
+    return snap.docs.map(d => d.data() as Exchange);
   }
 
   async createExchange(exchangeData: any): Promise<Exchange> {
@@ -372,36 +378,36 @@ class Database {
     const oldItem = items.find(i => i.id === exchangeData.oldSaleItemId);
     if (!oldItem) throw new Error("Item not found");
 
-    const newProductSnap = await db_firestore.collection("products").doc(exchangeData.newProductId).get();
-    if (!newProductSnap.exists) throw new Error("New product not found");
+    const newProductSnap = await getDoc(doc(db_firestore, "products", exchangeData.newProductId));
+    if (!newProductSnap.exists()) throw new Error("New product not found");
     const newProduct = newProductSnap.data() as Product;
 
     const diff = (newProduct.salePrice * exchangeData.newQty) - oldItem.price;
     const exchangeId = generateId();
-    const batch = db_firestore.batch();
+    const batch = writeBatch(db_firestore);
 
-    const oldProductSnap = await db_firestore.collection("products").doc(oldItem.productId).get();
-    if (oldProductSnap.exists) {
+    const oldProductSnap = await getDoc(doc(db_firestore, "products", oldItem.productId));
+    if (oldProductSnap.exists()) {
       const oldProduct = oldProductSnap.data() as Product;
-      batch.update(db_firestore.collection("products").doc(oldProduct.id), { stock: oldProduct.stock + 1 });
+      batch.update(doc(db_firestore, "products", oldProduct.id), { stock: oldProduct.stock + 1 });
     }
 
-    batch.update(db_firestore.collection("products").doc(newProduct.id), { stock: newProduct.stock - exchangeData.newQty });
-    batch.update(db_firestore.collection("saleItems").doc(oldItem.id), { isExchanged: true });
+    batch.update(doc(db_firestore, "products", newProduct.id), { stock: newProduct.stock - exchangeData.newQty });
+    batch.update(doc(db_firestore, "saleItems", oldItem.id), { isExchanged: true });
 
     const exchange: Exchange = {
       id: exchangeId, oldSaleItemId: oldItem.id, newProductId: newProduct.id, 
       differenceAmount: diff, type: diff > 0 ? "PAY" : diff < 0 ? "REFUND" : "EVEN", createdAt: new Date().toISOString()
     };
-    batch.set(db_firestore.collection("exchanges").doc(exchangeId), exchange);
+    batch.set(doc(db_firestore, "exchanges", exchangeId), exchange);
     await batch.commit();
     return exchange;
   }
 
   // --- Return Operations ---
   async getReturns(): Promise<ReturnRecord[]> {
-    const snap = await db_firestore.collection("returns").get();
-    return snap.docs.map(doc => doc.data() as ReturnRecord);
+    const snap = await getDocs(collection(db_firestore, "returns"));
+    return snap.docs.map(d => d.data() as ReturnRecord);
   }
 
   async createReturn(returnData: any): Promise<ReturnRecord> {
@@ -409,26 +415,26 @@ class Database {
     const item = items.find(i => i.id === returnData.saleItemId);
     if (!item) throw new Error("Item not found");
     const returnId = generateId();
-    const batch = db_firestore.batch();
-    const productSnap = await db_firestore.collection("products").doc(item.productId).get();
-    if (productSnap.exists) {
+    const batch = writeBatch(db_firestore);
+    const productSnap = await getDoc(doc(db_firestore, "products", item.productId));
+    if (productSnap.exists()) {
       const product = productSnap.data() as Product;
-      batch.update(db_firestore.collection("products").doc(product.id), { stock: product.stock + item.qty });
+      batch.update(doc(db_firestore, "products", product.id), { stock: product.stock + item.qty });
     }
-    batch.update(db_firestore.collection("saleItems").doc(item.id), { isReturned: true });
+    batch.update(doc(db_firestore, "saleItems", item.id), { isReturned: true });
     const ret: ReturnRecord = {
       id: returnId, saleItemId: item.id, refundAmount: item.price * item.qty, reason: returnData.reason, 
       refundMethod: returnData.refundMethod, createdAt: new Date().toISOString()
     };
-    batch.set(db_firestore.collection("returns").doc(returnId), ret);
+    batch.set(doc(db_firestore, "returns", returnId), ret);
     await batch.commit();
     return ret;
   }
 
   // --- Settings Operation ---
   async getSettings(): Promise<Settings> {
-    const docSnap = await db_firestore.collection("app").doc("settings").get();
-    return docSnap.exists ? (docSnap.data() as Settings) : {
+    const docSnap = await getDoc(doc(db_firestore, "app", "settings"));
+    return docSnap.exists() ? (docSnap.data() as Settings) : {
       shopName: "Shoaib Ladies Garments", address: "Karachi", phone: "", logo: "",
       saleFooter: "Thanks", returnFooter: "", exchangeFooter: "", exchangePolicy: "",
       showPolicyToggle: true, exchangeDays: 3, returnDays: 3,
@@ -438,13 +444,13 @@ class Database {
   async updateSettings(updates: Partial<Settings>): Promise<Settings> {
     const current = await this.getSettings();
     const updated = { ...current, ...updates };
-    await db_firestore.collection("app").doc("settings").set(updated);
+    await setDoc(doc(db_firestore, "app", "settings"), updated);
     return updated;
   }
 
   async addStockMovement(productId: string, type: string, qty: number, prev: number, next: number, ref: string) {
     const id = generateId();
-    await db_firestore.collection("stockMovements").doc(id).set({
+    await setDoc(doc(db_firestore, "stockMovements", id), {
       id, productId, movementType: type, quantity: qty, previousStock: prev, newStock: next, referenceId: ref, createdAt: new Date().toISOString(),
     });
   }
