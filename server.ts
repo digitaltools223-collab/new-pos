@@ -71,7 +71,8 @@ async function startServer() {
   app.get("/api/health", async (req: Request, res: Response) => {
     try {
       console.log("Checking DB connection...");
-      const result = await pool.query("SELECT 1 as connected");
+      // For Firestore, we can just check if we can reach it
+      const result = await db.getAllCustomers(); // Simple read to check connection
       res.json({ 
         status: "ok", 
         database: "connected", 
