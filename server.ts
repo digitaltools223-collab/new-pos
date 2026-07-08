@@ -72,7 +72,7 @@ async function startServer() {
     try {
       console.log("Checking DB connection...");
       // For Firestore, we can just check if we can reach it
-      const result = await db.getAllCustomers(); // Simple read to check connection
+      await db.getCustomers(); // Simple read to check connection
       res.json({ 
         status: "ok", 
         database: "connected", 
@@ -563,10 +563,12 @@ export default async function (req: Request, res: Response) {
     return app(req, res);
   } catch (err: any) {
     console.error("CRITICAL: Vercel Serverless Function Failed to Start:", err);
+    // Ensure we ALWAYS return JSON to avoid "Unexpected token A" error in frontend
     res.status(500).json({ 
       error: "Server Startup Error", 
       message: err.message,
-      hint: "Check if firebase-applet-config.json exists or check Firebase Environment Variables (FIREBASE_PROJECT_ID, etc.)"
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+      hint: "Check if all environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are set correctly in Vercel."
     });
   }
 }
